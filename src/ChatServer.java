@@ -2,6 +2,8 @@ import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.io.IOException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -25,16 +27,18 @@ import javax.swing.SwingUtilities;
 public class ChatServer implements Runnable {
 	// Client list, 1 socket for 1 client
 	LinkedList<SocketChannel>	clients	= new LinkedList<SocketChannel>();
-	ByteBuffer					writeBuffer	= ByteBuffer.allocateDirect(255);
-	ByteBuffer					readBuffer	= ByteBuffer.allocateDirect(255);
+	ByteBuffer					writeBuffer	= ByteBuffer.allocateDirect(3000);
+	ByteBuffer					readBuffer	= ByteBuffer.allocateDirect(3000);
 
-	ServerSocketChannel			serverSocketChannel;
+	private ServerSocketChannel		serverSocketTCP;
+	private DatagramSocket			serverSocketUDP;
+	private final byte[]			udpData	= new byte[2000];
+	private DatagramPacket receivePacket;
 	Selector					readSelector;
 	private static CharsetDecoder	asciiDecoder;
 	private boolean				running;
 	static JTextArea			logArea;
 
-	private static final int	PORT		= 27015;
 	private static final long	CHANNEL_WRITE_SLEEP	= 10;
 
 	public static void main(String... args) {
@@ -60,22 +64,27 @@ public class ChatServer implements Runnable {
 
 		ChatServer sv = new ChatServer();
 		log("\nServer created.");
+		sv.running = true;
 		sv.run();// Blocking
 		log("\nServer terminated.");
 	}
 
-	private void initServerSocket() {
+	private void initServerSockets() {
 		try {
-			serverSocketChannel = ServerSocketChannel.open();
+			serverSocketTCP = ServerSocketChannel.open();
 			// Non blocking channels
-			serverSocketChannel.configureBlocking(false);
+			serverSocketTCP.configureBlocking(false);
 
 			String addr = InetAddress.getLocalHost().getHostAddress();
 			// Bind the server socket channel
-			serverSocketChannel.socket().bind(new InetSocketAddress(addr, PORT));
+			serverSocketTCP.socket().bind(new InetSocketAddress(addr, Shared.PORTTCP));
 
 			readSelector = Selector.open();
-			log("\nServidor iniciado em: " + addr + ":" + PORT);
+			log("\nServidor TCP iniciado em: " + addr + ":" + Shared.PORTTCP);
+
+			serverSocketUDP = new DatagramSocket(Shared.PORTUDP, InetAddress.getLocalHost());
+			readUDP();
+			log("\nServidor UDP iniciado em: " + addr + ":" + Shared.PORTUDP);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -93,7 +102,7 @@ public class ChatServer implements Runnable {
 	private void acceptNewConections() {
 		try {
 			SocketChannel clientChannel;
-			while ((clientChannel = serverSocketChannel.accept()) != null) {
+			while ((clientChannel = serverSocketTCP.accept()) != null) {
 				addNewClient(clientChannel);
 
 				sendBroadcastMessage("Login from: " + clientChannel.socket().getInetAddress(), clientChannel);
@@ -256,14 +265,39 @@ public class ChatServer implements Runnable {
 	}
 
 	public static int getPort() {
-		return PORT;
+		return Shared.PORTTCP;
+	}
+
+	private SocketChannel getChannelByAddress(InetAddress addr) {
+		return clients.stream().filter(chnl -> chnl.socket().getInetAddress().equals(addr)).findFirst()
+				.orElseGet(null);
+	}
+
+	public void readUDP() {
+		Thread udpReader = new Thread(() -> {
+			// block while we wait for a client to connect
+			while (running) {
+				// UDP messages
+				receivePacket = new DatagramPacket(udpData, udpData.length);
+				try {
+					serverSocketUDP.receive(receivePacket);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+				String temp = new String(receivePacket.getData());
+				log("\nUDP message: " + temp.trim());
+				SocketChannel from = getChannelByAddress(receivePacket.getAddress());
+				if (from != null)
+					sendBroadcastMessage(temp.trim(), from);
+			}
+		});
+		udpReader.start();
 	}
 
 	@Override
 	public void run() {
-		initServerSocket();
+		initServerSockets();
 
-		running = true;
 		// block while we wait for a client to connect
 		while (running) {
 			// check for new client connections

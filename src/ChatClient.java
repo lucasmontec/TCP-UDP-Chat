@@ -5,8 +5,11 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.IOException;
 import java.net.ConnectException;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedChannelException;
@@ -29,7 +32,7 @@ import javax.swing.SwingUtilities;
 
 
 public class ChatClient extends Thread {
-	private static final int	BUFFER_SIZE			= 255;
+	private static final int	BUFFER_SIZE		= 2000;
 	private static final long	CNNL_WR_SLEEP	= 10L;
 	private static int				PORT				= 27015;
 
@@ -47,7 +50,7 @@ public class ChatClient extends Thread {
 	public static void main(String args[]) {
 
 		final ChatClient cc = new ChatClient(
-				JOptionPane.showInputDialog("Digite o host para se conectar: ip:porta"));
+				JOptionPane.showInputDialog("Digite o host para se conectar: ip"));
 		cc.start();
 
 		text = new JTextField();
@@ -88,18 +91,12 @@ public class ChatClient extends Thread {
 				if (text.getText().startsWith("!conectar")) {
 					isCommand = true;
 					String command[] = text.getText().split(" ");
-					if(command.length > 1) {
-						String address[] = command[1].split(":");
-						if (address.length > 1) {
-							cc.host = address[0];
-							PORT = Integer.parseInt(address[1]);
-						} else {
-							cc.host = address[0];
-							PORT = 27015;
-						}
+					if (command.length > 1) {
+						cc.host = command[1];
+						PORT = Shared.PORTTCP;
 						cc.connect();
-					}else {
-						print("\nCommand format> \"!conectar: <ip:porta>\"");
+					} else {
+						print("\nCommand format> \"!conectar: ip\"");
 					}
 				}
 
@@ -120,10 +117,57 @@ public class ChatClient extends Thread {
 			}
 		});
 
+		JButton sendUDP = new JButton("EnviarUDP");
+		sendUDP.addActionListener(evt -> {
+			boolean isCommand = false;
+
+			// Name
+			if (text.getText().startsWith("!nome")) {
+				isCommand = true;
+				String command[] = text.getText().split(" ");
+				if (command.length > 1) {
+					cc.name = command[1];
+				} else {
+					print("\nCommand format> \"!nome: <seu nome>\"");
+				}
+
+			}
+
+			// Connect command
+			if (text.getText().startsWith("!conectar")) {
+				isCommand = true;
+				String command[] = text.getText().split(" ");
+				if (command.length > 1) {
+					cc.host = command[1];
+					PORT = Shared.PORTTCP;
+					cc.connect();
+				} else {
+					print("\nCommand format> \"!conectar: ip\"");
+				}
+			}
+
+			if (!isCommand) {
+				print("\nEu: " + text.getText());
+				if (cc.name != null && cc.name.length() > 0)
+					cc.sendMessageUDP(cc.name + ":" + text.getText());
+				else
+					cc.sendMessageUDP(cc.host + ":" + text.getText());
+				;
+			}
+
+			if (text.getText().equals("sair")) {
+				cc.shutdown();
+				frame.dispose();
+			}
+
+			text.setText("");
+		});
+
 		frame.add(scroll);
 		frame.add(new JLabel("Enviar texto:"));
 		frame.add(text);
 		frame.add(send);
+		frame.add(sendUDP);
 	}
 
 	private static void print(String txt) {
@@ -136,18 +180,12 @@ public class ChatClient extends Thread {
 	}
 
 	public ChatClient(String host) {
-		String address[] = host.split(":");
-		if (address.length > 1) {
-			this.host = address[0];
-			PORT = Integer.parseInt(address[1]);
-		} else {
-			this.host = address[0];
-			PORT = 27015;
-		}
+		this.host = host;
+		PORT = Shared.PORTTCP;
+
 		writeBuffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
 		readBuffer = ByteBuffer.allocateDirect(BUFFER_SIZE);
-		asciiDecoder = Charset.forName("US-ASCII").newDecoder();
-
+		asciiDecoder = Charset.forName("ISO-8859-1").newDecoder();
 	}
 
 	@Override
@@ -170,17 +208,18 @@ public class ChatClient extends Thread {
 	private void connect() {
 		try {
 			readSelector = Selector.open();
-			InetAddress addr = InetAddress.getByName(host);
+			InetAddress addr = InetAddress.getByName(host.replace("/", "").replace("\\", ""));
+			print("Tentando conexão em: " + addr + ":" + PORT);
 			channel = SocketChannel.open(new InetSocketAddress(addr, PORT));
 			channel.configureBlocking(false);
 			channel.register(readSelector, SelectionKey.OP_READ, new StringBuffer());
 		} catch (UnknownHostException uhe) {
 			print("\nHost desconhecido!");
-			print("\nUse \"!conectar: ip:porta\" para se reconectar!");
+			print("\nUse \"!conectar: ip\" para se reconectar!");
 			uhe.printStackTrace();
 		} catch (ConnectException ce) {
 			print("\nTempo de conexão perdido!");
-			print("\nUse \"!conectar: ip:porta\" para se reconectar!");
+			print("\nUse \"!conectar: ip\" para se reconectar!");
 			ce.printStackTrace();
 		} catch (Exception e) {
 			print("\nErro crítico:");
@@ -229,7 +268,7 @@ public class ChatClient extends Thread {
 					String line = sb.toString();
 					if ((line.indexOf("\n") != -1) || (line.indexOf("\r") != -1)) {
 						sb.delete(0, sb.length());
-						print("\n>" + line);
+						print("\n>" + line.trim());
 					}
 				}
 			}
@@ -249,13 +288,51 @@ public class ChatClient extends Thread {
 	}
 
 	/**
-	 * Envia mensagem string para o server pelo canal
+	 * Envia mensagem string para o server pelo canal TCP
 	 * 
 	 * @param mesg
 	 */
 	private void sendMessage(String mesg) {
 		prepareWriteBuffer(mesg);
 		channelWrite(channel, writeBuffer);
+	}
+
+	/**
+	 * Envia mensagem string para o server via UDP
+	 * 
+	 * @param mesg
+	 */
+	private void sendMessageUDP(String mesg) {
+		InetAddress addr = null;
+		try {
+			addr = InetAddress.getByName(host);
+		} catch (UnknownHostException e) {
+			e.printStackTrace();
+		}
+		if (addr != null) {
+			byte[] toSend = mesg.getBytes();
+			DatagramPacket packet = new DatagramPacket(toSend, toSend.length, addr, Shared.PORTUDP);
+
+			// udp
+			DatagramSocket udpSocket = null;
+			try {
+				udpSocket = new DatagramSocket();
+			} catch (SocketException e1) {
+				e1.printStackTrace();
+			}
+
+			if (udpSocket != null) {
+				try {
+					udpSocket.send(packet);
+				} catch (IOException e) {
+					e.printStackTrace();
+				}
+			} else {
+				print("Error! UDP socket creation failed.");
+			}
+		} else {
+			print("Error! UDP address failed.");
+		}
 	}
 
 	private void prepareWriteBuffer(String mesg) {
