@@ -25,7 +25,7 @@ import javax.swing.JTextArea;
 import javax.swing.SwingUtilities;
 
 public class ChatServer implements Runnable {
-	// Client list, 1 socket for 1 client
+	// Lista de clientes, 1 socket para 1 cliente
 	LinkedList<SocketChannel>	clients	= new LinkedList<SocketChannel>();
 	ByteBuffer					writeBuffer	= ByteBuffer.allocateDirect(3000);
 	ByteBuffer					readBuffer	= ByteBuffer.allocateDirect(3000);
@@ -72,11 +72,11 @@ public class ChatServer implements Runnable {
 	private void initServerSockets() {
 		try {
 			serverSocketTCP = ServerSocketChannel.open();
-			// Non blocking channels
+			// Canais nao bloqueantes
 			serverSocketTCP.configureBlocking(false);
 
 			String addr = InetAddress.getLocalHost().getHostAddress();
-			// Bind the server socket channel
+			// Vincula o canal do socket do servidor
 			serverSocketTCP.socket().bind(new InetSocketAddress(addr, Shared.PORTTCP));
 
 			readSelector = Selector.open();
@@ -112,10 +112,10 @@ public class ChatServer implements Runnable {
 				+ " users here.");
 			}
 		} catch (IOException ioe) {
-			// Error on accept
+			// Erro em accept
 			ioe.printStackTrace();
 		} catch (Exception e) {
-			// Other errors
+			// Outros erros
 			e.printStackTrace();
 		}
 	}
@@ -177,17 +177,17 @@ public class ChatServer implements Runnable {
 	}
 
 	private void readIncomingMessages() {
-		// Store the socket
+		// Armazena o socket
 		SocketChannel channel = null;
 
 		try {
-			// non-blocking select, returns immediately regardless of how many keys are ready
+			// Select nao bloqueante, retorna imediatamente independente de quantas keys estao prontas
 			readSelector.selectNow();
 
-			// fetch the keys
+			// Busca as keys
 			Set<?> readyKeys = readSelector.selectedKeys();
 
-			// run through the keys and process
+			// Percorre as keys e processa
 			Iterator<?> i = readyKeys.iterator();
 			while (i.hasNext()) {
 				SelectionKey key = (SelectionKey) i.next();
@@ -195,10 +195,10 @@ public class ChatServer implements Runnable {
 				channel = (SocketChannel) key.channel();
 				readBuffer.clear();
 
-				// read from the channel into our buffer
+				// Le do canal para o buffer
 				long nbytes = channel.read(readBuffer);
 
-				// check for end-of-stream
+				// Checagem para um end-of-stream
 				if (nbytes == -1 || readBuffer == null) {
 					channel.close();
 					clients.remove(channel);
@@ -206,28 +206,28 @@ public class ChatServer implements Runnable {
 					log("\nSaiu: " + channel.socket().getInetAddress());
 				} else {
 					log("\nMensagem nova:");
-					// grab the StringBuffer we stored as the attachment
+					// Apanha a StringBuffer que foi armazenada como attachment
 					StringBuffer sb = (StringBuffer) key.attachment();
 
-					// use a CharsetDecoder to turn those bytes into a string
-					// and append to our StringBuffer
+					// Usa um CharsetDecoder para transformar os bytes em uma string
+					// e acrescenta a nossa StringBuffer
 					readBuffer.flip();
 					String str = asciiDecoder.decode(readBuffer).toString();
 					readBuffer.clear();
 					sb.append(str);
 
-					// check for a full line
+					// Checagem para uma linha cheia
 					String line = sb.toString();
 					if ((line.indexOf("\n") != -1) || (line.indexOf("\r") != -1)) {
 						line = line.trim();
 						if (line.startsWith("quit")) {
-							// client is quitting, close their channel, remove them from the list and notify all other clients
+							// Client esta finalizando, fecha o canal, remove da lista e notifica os outros clients
 							channel.close();
 							clients.remove(channel);
 							sendBroadcastMessage("logout: " + channel.socket().getInetAddress(), channel);
 							log("\nlogout: " + channel.socket().getInetAddress());
 						}
-						// got one, send it to all clients
+						// Recebeu um, envia para todos os clients
 						if (line.split(":").length > 1) {
 							sendBroadcastMessage(line, channel);
 							log("\nMensagem (" + channel.socket().getInetAddress() + "): " + line);
@@ -275,9 +275,9 @@ public class ChatServer implements Runnable {
 
 	public void readUDP() {
 		Thread udpReader = new Thread(() -> {
-			// block while we wait for a client to connect
+			// Bloqueia enquanto esperamos pela conexão de um client
 			while (running) {
-				// UDP messages
+				// Mensagens UDP
 				receivePacket = new DatagramPacket(udpData, udpData.length);
 				try {
 					serverSocketUDP.receive(receivePacket);
@@ -298,15 +298,15 @@ public class ChatServer implements Runnable {
 	public void run() {
 		initServerSockets();
 
-		// block while we wait for a client to connect
+		// Bloqueia enquanto esperamos pela conexão de um client
 		while (running) {
-			// check for new client connections
+			// Checagem para novas conexões de clients
 			acceptNewConections();
 
-			// check for incoming mesgs
+			// Chegagem para mensagens que entram
 			readIncomingMessages();
 
-			// sleep a bit
+			// Sleep
 			try {
 				Thread.sleep(100);
 			} catch (InterruptedException ie) {

@@ -75,7 +75,7 @@ public class ChatClient extends Thread {
 			public void actionPerformed(ActionEvent arg0) {
 				boolean isCommand = false;
 
-				// Name
+				// Definicao do nome
 				if (text.getText().startsWith("!nome")) {
 					isCommand = true;
 					String command[] = text.getText().split(" ");
@@ -87,7 +87,7 @@ public class ChatClient extends Thread {
 
 				}
 
-				// Connect command
+				// Comando connect
 				if (text.getText().startsWith("!conectar")) {
 					isCommand = true;
 					String command[] = text.getText().split(" ");
@@ -121,7 +121,7 @@ public class ChatClient extends Thread {
 		sendUDP.addActionListener(evt -> {
 			boolean isCommand = false;
 
-			// Name
+			// Definicao do nome
 			if (text.getText().startsWith("!nome")) {
 				isCommand = true;
 				String command[] = text.getText().split(" ");
@@ -133,7 +133,7 @@ public class ChatClient extends Thread {
 
 			}
 
-			// Connect command
+			// Comando connect
 			if (text.getText().startsWith("!conectar")) {
 				isCommand = true;
 				String command[] = text.getText().split(" ");
@@ -229,15 +229,15 @@ public class ChatClient extends Thread {
 	}
 
 	private void readIncomingMessages() {
-		// check for incoming mesgs
+		// Checagem para a chegada de mensagens
 		try {
-			// non-blocking select, returns immediately regardless of how many keys are ready
+			// Select não bloqueante, retorna imediatamente independente de quantas keys estão prontas
 			readSelector.selectNow();
 
-			// fetch the keys
+			// Busca as keys
 			Set<?> readyKeys = readSelector.selectedKeys();
 
-			// run through the keys and process
+			// Percorre as keys e processa
 			Iterator<?> i = readyKeys.iterator();
 			while (i.hasNext()) {
 				SelectionKey key = (SelectionKey) i.next();
@@ -245,26 +245,26 @@ public class ChatClient extends Thread {
 				SocketChannel channel = (SocketChannel) key.channel();
 				readBuffer.clear();
 
-				// read from the channel into our buffer
+				// Lê do canal para o buffer
 				long nbytes = channel.read(readBuffer);
 
-				// check for end-of-stream
+				// Checa por end-of-stream
 				if (nbytes == -1) {
 					System.out.println("Desconectado.");
 					channel.close();
 					shutdown();
 				} else {
-					// grab the StringBuffer we stored as the attachment
+					// Apanha a StringBuffer que foi armazenada como attachment
 					StringBuffer sb = (StringBuffer) key.attachment();
 
-					// use a CharsetDecoder to turn those bytes into a string
-					// and append to our StringBuffer
+					// Usa um CharsetDecoder para transformar os bytes em uma string
+					// e acrescenta a nossa StringBuffer
 					readBuffer.flip();
 					String str = asciiDecoder.decode(readBuffer).toString();
 					sb.append(str);
 					readBuffer.clear();
 
-					// check for a full line and write to STDOUT
+					// Checa por uma linha cheia e escreve em STDOUT
 					String line = sb.toString();
 					if ((line.indexOf("\n") != -1) || (line.indexOf("\r") != -1)) {
 						sb.delete(0, sb.length());
@@ -336,23 +336,23 @@ public class ChatClient extends Thread {
 	}
 
 	private void prepareWriteBuffer(String mesg) {
-		// fills the buffer with the message
-		// and prepares it for a channel write
+		// preenche o buffer com a mensagem
+		// e a prepara para escrita no canal
 		writeBuffer.clear();
-		// Paste the message in the buffer
+		// Coloca a mensagem no buffer
 		writeBuffer.put(mesg.getBytes());
 		writeBuffer.putChar('\n');
-		// Flip the buffer to send (limit to the current pos, pos to 0)
+		// Faz um flip no buffer para envio (limit to the current pos, pos to 0)
 		writeBuffer.flip();
 	}
 
 	private void channelWrite(SocketChannel channel, ByteBuffer writeBuffer) {
 		long nbytes = 0;
-		// How much there is between the curr pos and end?
+		// Quanto ha entre a posicao corrente e o fim?
 		long toWrite = writeBuffer.remaining();
 
-		// loop on the channel.write() call since it will not necessarily
-		// write all bytes in one shot
+		// Realiza loop em channel.write() ja que nao ira necessariamente
+		// escrever todos os bytes de uma so vez
 		try {
 			// System.out.print("\nSending:\n");
 			while (nbytes != toWrite) {
@@ -370,7 +370,7 @@ public class ChatClient extends Thread {
 			e.printStackTrace();
 		}
 
-		// get ready for another write if needed
+		// Preparacao para outra escrita se necessario
 		writeBuffer.rewind();
 	}
 
